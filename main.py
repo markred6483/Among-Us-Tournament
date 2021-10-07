@@ -7,13 +7,13 @@ import os
 GUILD_NAME = "markred's server"
 CHILL_ROOM_NAME = "General"
 CATEGORY_CHANNEL_NAME = "Among Us Tournament"
-WAITING_CHAT_NAME = "waiting-chat"
+WAITING_CHAT_NAME = "chat"
 WAITING_ROOM_NAME = "Waiting Room"
 LOBBY_NAME_PREFIX = "Lobby Room "
-LOBBY_ROLE_PREFIX = "Among Us Tournament Lobby "
-MANAGER_ROLE_NAME = "Among Us Tournament Manager"
-PARTICIPANT_ROLE_NAME = "Among Us Tournament Participant"
-BANNED_ROLE_NAME = "Among Us Tournament Banned"
+LOBBY_ROLE_PREFIX = "Among Us Tournament - Lobby "
+MANAGER_ROLE_NAME = "Among Us Tournament - Manager"
+PARTICIPANT_ROLE_NAME = "Among Us Tournament - Participant"
+BANNED_ROLE_NAME = "Among Us Tournament - Banned"
 
 class CustomClient(BaseClient):
   
@@ -118,15 +118,17 @@ class CustomClient(BaseClient):
   
   async def create_lobby(self, index, members):
     index = str(index)
+    lobby_role = await self.create_role(LOBBY_ROLE_PREFIX + index)
     overwrites = {
       self.guild.default_role: discord.PermissionOverwrite(
         connect = False, view_channel = False),
       self.get_manager_role(): discord.PermissionOverwrite(
         connect = True, view_channel = True),
+      lobby_role: discord.PermissionOverwrite(
+        connect = True, view_channel = True)
     }
     for member in members:
-      overwrites[member] = discord.PermissionOverwrite(
-        connect = True, view_channel = True)
+      await self.give_role(member, lobby_role)
     lobby = await self.create_voice_channel(
       LOBBY_NAME_PREFIX + index, self.get_tournament_category(), overwrites)
     return lobby
@@ -136,8 +138,12 @@ class CustomClient(BaseClient):
       for channel in self.category_channel.channels:
         if LOBBY_NAME_PREFIX in channel.name:
           await self.delete_channel(channel, self.get_waiting_room())
+    for role in self.guild.roles:
+      if LOBBY_ROLE_PREFIX in role.name:
+        await self.delete_if_exists(role)
   
   async def clean(self):
+    await self.delete_lobbies()
     if self.get_tournament_category():
       for channel in self.category_channel.channels:
         await self.delete_channel(channel, self.get_chill_room())
@@ -210,6 +216,9 @@ class CustomClient(BaseClient):
 
   async def revoke_participant_role(self, member):
     if await self.revoke_role(member, self.get_participant_role()):
+      for role in member.roles:
+        if LOBBY_ROLE_PREFIX in role.name:
+          await self.revoke_role(member, role)
       await self.move_from_lobby_to_waiting(member)
       return True
     return False
@@ -228,8 +237,10 @@ class CustomClient(BaseClient):
       if self.get_participant_role() not in member.roles:
         if member.voice and LOBBY_NAME_PREFIX in member.voice.channel.name:
           #TODO should remove this permission even if member isn't in lobby
-          await member.voice.channel.set_permissions(member, connect=False)
-          await self.move_member(member, self.get_waiting_room(), force_mobile=True)
+          await self.move_member(member,
+            at=self.get_tournament_category(),
+            to=self.get_waiting_room(),
+            force_mobile=True)
   
   def get_participants(self):
     return self.get_participant_role().members

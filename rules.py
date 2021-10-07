@@ -2,7 +2,7 @@ import discord
 import random
 import math
 
-LOBBY_CAPACITY = 1
+LOBBY_CAPACITY = 2
 OK_REACTION = "👌"
 
 class MessageRule:
@@ -210,7 +210,6 @@ class BroadcastCmdRule(ProtectedWaitingChatCmdRule):
           dm_channel = await member.create_dm()
           await dm_channel.send(ad)
         return True
-        await self.client.get_waiting_room().send(ad)
     return False
 
 class MuteCmdRule(ProtectedWaitingChatCmdRule):

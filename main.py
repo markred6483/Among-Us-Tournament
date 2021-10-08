@@ -104,8 +104,7 @@ class CustomClient(BaseClient):
       self.waiting_chat = await self.create_text_channel(
         WAITING_CHAT_NAME, self.category_channel, {
           self.banned_role: discord.PermissionOverwrite(
-            send_messages=False)
-        })
+            send_messages=False )})
     if not self.get_waiting_room():
       self.waiting_room = await self.create_voice_channel(
         WAITING_ROOM_NAME, self.category_channel, {
@@ -209,38 +208,38 @@ class CustomClient(BaseClient):
   
   async def give_banned_role(self, member):
     if await self.give_role(member, self.get_banned_role()):
-      await self.revoke_manager_role(member)
+      await self.revoke_manager_role(member, False)
       await self.revoke_participant_role(member)
       return True
     return False
 
-  async def revoke_participant_role(self, member):
+  async def revoke_participant_role(self, member, move_to_waiting=True):
     if await self.revoke_role(member, self.get_participant_role()):
       for role in member.roles:
         if LOBBY_ROLE_PREFIX in role.name:
           await self.revoke_role(member, role)
-      await self.move_from_lobby_to_waiting(member)
+          break
+      if move_to_waiting and self.get_manager_role() not in member.roles:
+        await self.maybe_move_from_lobby_to_waiting(member)
       return True
     return False
 
-  async def revoke_manager_role(self, member):
+  async def revoke_manager_role(self, member, move_to_waiting=True):
     if await self.revoke_role(member, self.get_manager_role()):
-      await self.move_from_lobby_to_waiting(member)
+      if move_to_waiting and self.get_manager_role() not in member.roles:
+        await self.maybe_move_from_lobby_to_waiting(member)
       return True
     return False
   
   async def revoke_banned_role(self, member):
     return await self.revoke_role(member, self.get_banned_role())
   
-  async def move_from_lobby_to_waiting(self, member):
-    if self.get_manager_role() not in member.roles:
-      if self.get_participant_role() not in member.roles:
-        if member.voice and LOBBY_NAME_PREFIX in member.voice.channel.name:
-          #TODO should remove this permission even if member isn't in lobby
-          await self.move_member(member,
-            at=self.get_tournament_category(),
-            to=self.get_waiting_room(),
-            force_mobile=True)
+  async def maybe_move_from_lobby_to_waiting(self, member):
+      if member.voice and LOBBY_NAME_PREFIX in member.voice.channel.name:
+        await self.move_member(member,
+          at=self.get_tournament_category(),
+          to=self.get_waiting_room(),
+          force_mobile=True)
   
   def get_participants(self):
     return self.get_participant_role().members

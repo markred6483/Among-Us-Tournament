@@ -24,9 +24,10 @@ class BaseClient(discord.Client):
       # can happen that guild.voice_client is not None and guild.me.voice is None
       if not channel.guild.me.voice or channel.guild.me.voice.channel != channel: 
         await channel.guild.voice_client.move_to(channel)
-        await channel.guild.change_voice_state(channel=channel, self_deaf=True, self_mute=True)
     else:
       await channel.connect(reconnect=False)
+    await channel.guild.change_voice_state(
+      channel=channel, self_deaf=True, self_mute=True)
   
   async def move_member(self, member, to, at=None, force_mobile=False):
     if member.voice and member.voice.channel.guild == self.guild:

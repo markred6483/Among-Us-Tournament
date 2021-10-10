@@ -79,7 +79,7 @@ class CustomClient(BaseClient):
   async def execute_old_commands(self):
     already_done = set()
     async for msg in self.get_waiting_chat().history(limit=10000):
-      if msg.author.id == client.user.id:
+      if msg.author.id == self.user.id:
         break
       if discord.utils.get(msg.reactions, me=True):
         break
@@ -246,6 +246,15 @@ class CustomClient(BaseClient):
   
   def get_managers(self):
     return self.get_manager_role().members
+  
+  async def mute_channel_managed_by(self, user, unmute=False):
+    member = await self.get_member(user)
+    if member and member.voice and member.voice.channel:
+      channel = member.voice.channel
+      if channel.category == self.get_tournament_category():
+        if await self.set_channel_permissions(
+            channel, self.get_participant_role(), speak=unmute):
+          return channel
 
 intents = discord.Intents.default()
 intents.members = True # to get all the members of the guild at start-up

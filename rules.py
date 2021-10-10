@@ -30,11 +30,20 @@ class CmdRule(MessageRule):
     super().__init__(client)
     self.min_args = min_args
     self.max_args = max_args
+  async def publish(self, s):
+    if self.client.get_waiting_chat():
+      await self.client.get_waiting_chat().send(s)
   async def process(self, msg):
     if await super().process(msg):
       if msg.author != self.client.user:
         args = msg.content.upper().split()
-        cmd = args[0]
+        try: # DEBUG
+          cmd = args[0]
+        except Exception as e:
+          print(self.__class__.name)
+          print(msg)
+          print(__name__)
+          raise e
         args = args[1:]
         if self.min_args <= len(args) <= self.max_args:
           if await self.execute(cmd, args, msg):
@@ -116,8 +125,7 @@ class BringCmdRule(ProtectedWaitingChatCmdRule):
         for id_or_mention in args:
           member = await self.client.get_member(id_or_mention)
           if await self.client.give_participant_role(member):
-            await self.client.get_waiting_chat().send(
-              f'{member.mention} joins the tournament')
+            await self.publish(f'{member.mention} joins the tournament')
         return True
       return False
 
@@ -130,8 +138,7 @@ class KickCmdRule(ProtectedWaitingChatCmdRule):
         for id_or_mention in args:
           member = await self.client.get_member(id_or_mention)
           if await self.client.revoke_participant_role(member):
-            await self.client.get_waiting_chat().send(
-              f'{member.mention} quits the tournament')
+            await self.publish(f'{member.mention} quits the tournament')
         return True
       return False
 
@@ -144,8 +151,7 @@ class BanCmdRule(ProtectedWaitingChatCmdRule):
         for id_or_mention in args:
           member = await self.client.get_member(id_or_mention)
           if await self.client.give_banned_role(member):
-            await self.client.get_waiting_chat().send(
-              f'{member.mention} banned from tournament')
+            await self.publish(f'{member.mention} banned from tournament')
         return True
       return False
 
@@ -158,31 +164,44 @@ class UnbanCmdRule(ProtectedWaitingChatCmdRule):
         for id_or_mention in args:
           member = await self.client.get_member(id_or_mention)
           if await self.client.revoke_banned_role(member):
-            await self.client.get_waiting_chat().send(
-              f'{member.mention} unbanned from tournament')
+            await self.publish(f'{member.mention} unbanned from tournament')
         return True
       return False
 
 class SummonCmdRule(ProtectedWaitingChatCmdRule):
+  def __init__(self, client):
+    super().__init__(client, 0, 1)
   async def execute(self, cmd, args, msg):
     if await super().execute(cmd, args, msg):
       if cmd == "SUMMON":
+        do_all = False
+        if len(args) == 1:
+          if args[0] == "ALL":
+            do_all = True
+          else:
+            return False
         participants = self.client.get_participants()
+        buffer_ko = ["**Couldn't summon because far away**: "]
         buffer_present = ["**Already here**: "]
         buffer_ok = ["**Summoned**: "]
-        buffer_ko = ["**Could not summon because far away**: "]
-        buffer_mobile = ["**Not summoned because on mobile**: "]
+        if do_all:
+          buffer_mobile = ["**Summoned even if on mobile**: "]
+        else:
+          buffer_mobile = ["**Not summoned because on mobile**: "]
         for participant in participants:
           if participant.voice and participant.voice.channel.guild == self.client.guild:
             # member is connected to this server
-            if participant.voice.channel != self.client.get_waiting_room():
+            if participant.voice.channel.category != self.client.get_waiting_room():
               # member isn't waiting in the waiting room
               if participant.is_on_mobile():
-                # We don't move members on mobile as they'd get bugged
+                # Usually we don't move members on mobile as they'd get bugged
+                # TODO Also, invisibles and DNDs don't appear as on mobile, even if they are
                 buffer_mobile.append(participant.mention)
+                if do_all:
+                  await participant.move_to(self.client.get_waiting_room())
               else:
-                await participant.move_to(self.client.get_waiting_room())
                 buffer_ok.append(participant.mention)
+                await participant.move_to(self.client.get_waiting_room())
             else:
               # member is waiting in the waiting room
               buffer_present.append(participant.mention)
@@ -194,7 +213,7 @@ class SummonCmdRule(ProtectedWaitingChatCmdRule):
         buffer_present[0] += str(len(buffer_present) - 1)
         buffer_mobile[0] += str(len(buffer_mobile) - 1)
         await msg.channel.send("\n".join(
-          buffer_present + buffer_ok + buffer_ko + buffer_mobile))
+            buffer_present + buffer_ok + buffer_ko + buffer_mobile))
         return True
     return False
 
@@ -216,10 +235,9 @@ class MuteCmdRule(ProtectedWaitingChatCmdRule):
   async def execute(self, cmd, args, msg):
     if await super().execute(cmd, args, msg):
       if cmd == "MUTE":
-        await self.client.set_channel_permissions(
-          self.client.get_waiting_room(),
-          self.client.get_participant_role(),
-          speak=False)
+        affected_channel = await self.client.mute_channel_managed_by(msg.author)
+        if affected_channel:
+          await self.publish(f'Muted {affected_channel.name}')
         return True
     return False
 
@@ -227,10 +245,9 @@ class UnmuteCmdRule(ProtectedWaitingChatCmdRule):
   async def execute(self, cmd, args, msg):
     if await super().execute(cmd, args, msg):
       if cmd == "UNMUTE":
-        await self.client.set_channel_permissions(
-          self.client.get_waiting_room(),
-          self.client.get_participant_role(),
-          speak=True)
+        channel = await self.client.mute_channel_managed_by(msg.author, unmute=True)
+        if channel:
+          await self.publish(f'Unmuted {channel.name}')
         return True
     return False
 
@@ -301,8 +318,7 @@ class JoinCmdRule(WaitingChatCmdRule):
       if cmd == "JOIN":
         member = await self.client.get_member(msg.author)
         if await self.client.give_participant_role(member):
-          await self.client.get_waiting_chat().send(
-            f'{member.mention} joins the tournament')
+          await self.publish(f'{member.mention} joins the tournament')
         return True
     return False
 
@@ -312,7 +328,6 @@ class QuitCmdRule(WaitingChatCmdRule):
       if cmd == "QUIT":
         member = await self.client.get_member(msg.author)
         if await self.client.revoke_participant_role(member):
-          await self.client.get_waiting_chat().send(
-            f'{member.mention} quits the tournament')
+          await self.publish(f'{member.mention} quits the tournament')
         return True
     return False

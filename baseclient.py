@@ -47,7 +47,7 @@ class BaseClient(discord.Client):
       await named_deletable_obj.delete()
       raise ValueError(
         f'{name} is not a valid name for a {named_deletable_obj.__class__.__name__}')
-    
+  
   async def create_role(self, name):
     role = await self.guild.create_role(name=name)
     await self.check_valid_name(role, name)
@@ -73,8 +73,11 @@ class BaseClient(discord.Client):
     return channel
   
   async def delete_if_exists(self, deletable):
-    try: await deletable.delete()
-    except discord.errors.NotFound: pass
+    try:
+      await deletable.delete()
+      return True
+    except discord.errors.NotFound:
+      return False
   
   async def delete_channel(self, channel, backup_channel=None):
     if backup_channel and isinstance(channel, discord.VoiceChannel):
@@ -113,6 +116,12 @@ class BaseClient(discord.Client):
     return discord.utils.get(self.guild.roles, name=name)
   
   async def set_channel_permissions(self, channel, member_role, **permissions):
+    current_overwrite = channel.overwrites_for(member_role)
+    for perm, val in current_overwrite:
+      if perm in permissions and permissions[perm] == val:
+        del permissions[perm]
+    if len(permissions) == 0:
+      return False
     await channel.set_permissions(member_role, **permissions)
     for member in channel.members:
       if isinstance(member_role, discord.Member):
@@ -121,6 +130,7 @@ class BaseClient(discord.Client):
       elif isinstance(member_role, discord.Role):
         if member_role in member.roles:
           await self.refresh_mute(member)
+    return True
 
   async def give_role(self, member, role):
     if role not in member.roles:

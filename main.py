@@ -260,7 +260,6 @@ if __name__ == "__main__":
   intents.members = True # to get all the members of the guild at start-up
   intents.presences = True # to know who is on mobile
   client = CustomClient(guild_name=GUILD_NAME, intents=intents)
-
   tasks = run_test_clients(GUILD_NAME, os.environ['DISCORD_TEST_TOKENS'].split())
   tasks.append(client.start(os.environ['DISCORD_TOKEN']))
   asyncio.get_event_loop().run_until_complete(asyncio.wait(tasks))

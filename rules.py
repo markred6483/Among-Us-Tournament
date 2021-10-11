@@ -341,5 +341,6 @@ class QuitCmdRule(WaitingChatCmdRule):
 TODO:
 - split process method in two methods: evaluate and ...
   - async with channel.typing() in CmdRule
+  - terminate fix
 
 '''

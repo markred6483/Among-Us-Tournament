@@ -1,0 +1,12 @@
+GUILD_NAME = "markred's server"
+CHILL_ROOM_NAME = "General"
+CATEGORY_CHANNEL_NAME = "Among Us Tournament"
+WAITING_CHAT_NAME = "chat"
+WAITING_ROOM_NAME = "Waiting Room"
+LOBBY_NAME_PREFIX = "Lobby Room "
+LOBBY_ROLE_PREFIX = "Among Us Tournament - Lobby "
+MANAGER_ROLE_NAME = "Among Us Tournament - Manager"
+PARTICIPANT_ROLE_NAME = "Among Us Tournament - Participant"
+BANNED_ROLE_NAME = "Among Us Tournament - Banned"
+LOBBY_CAPACITY = 2
+OK_REACTION = "👌"

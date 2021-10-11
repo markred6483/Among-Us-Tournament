@@ -1,9 +1,7 @@
 import discord
 import random
 import math
-
-LOBBY_CAPACITY = 2
-OK_REACTION = "👌"
+from config import OK_REACTION, LOBBY_CAPACITY
 
 class MessageRule:
   def __init__(self, client):
@@ -42,7 +40,7 @@ class CmdRule(MessageRule):
         except Exception as e:
           print(self.__class__.name)
           print(msg)
-          print(__name__)
+          print(msg.content)
           raise e
         args = args[1:]
         if self.min_args <= len(args) <= self.max_args:
@@ -185,17 +183,16 @@ class SummonCmdRule(ProtectedWaitingChatCmdRule):
         buffer_present = ["**Already here**: "]
         buffer_ok = ["**Summoned**: "]
         if do_all:
-          buffer_mobile = ["**Summoned even if on mobile**: "]
+          buffer_mobile = ["**Summoned even if invisible or on mobile**: "]
         else:
-          buffer_mobile = ["**Not summoned because on mobile**: "]
+          buffer_mobile = ["**Not summoned because invisible or on mobile**: "]
         for participant in participants:
           if participant.voice and participant.voice.channel.guild == self.client.guild:
             # member is connected to this server
-            if participant.voice.channel.category != self.client.get_waiting_room():
+            if participant.voice.channel != self.client.get_waiting_room():
               # member isn't waiting in the waiting room
-              if participant.is_on_mobile():
+              if participant.is_on_mobile() or participant.status == discord.Status.offline:
                 # Usually we don't move members on mobile as they'd get bugged
-                # TODO Also, invisibles and DNDs don't appear as on mobile, even if they are
                 buffer_mobile.append(participant.mention)
                 if do_all:
                   await participant.move_to(self.client.get_waiting_room())
@@ -212,8 +209,8 @@ class SummonCmdRule(ProtectedWaitingChatCmdRule):
         buffer_ko[0] += str(len(buffer_ko) - 1)
         buffer_present[0] += str(len(buffer_present) - 1)
         buffer_mobile[0] += str(len(buffer_mobile) - 1)
-        await msg.channel.send("\n".join(
-            buffer_present + buffer_ok + buffer_ko + buffer_mobile))
+        await self.publish("\n".join(
+            buffer_ko + buffer_present + buffer_ok + buffer_mobile))
         return True
     return False
 
@@ -312,6 +309,14 @@ class CleanCmdRule(ProtectedWaitingChatCmdRule):
         return True
     return False
 
+class TerminateCmdRule(ProtectedWaitingChatCmdRule):
+  async def execute(self, cmd, args, msg):
+    if await super().execute(cmd, args, msg):
+      if cmd == "TERMINATE":
+        await self.client.close()
+        return True
+    return False
+
 class JoinCmdRule(WaitingChatCmdRule):
   async def execute(self, cmd, args, msg):
     if await super().execute(cmd, args, msg):
@@ -331,3 +336,10 @@ class QuitCmdRule(WaitingChatCmdRule):
           await self.publish(f'{member.mention} quits the tournament')
         return True
     return False
+
+'''
+TODO:
+- split process method in two methods: evaluate and ...
+  - async with channel.typing() in CmdRule
+
+'''

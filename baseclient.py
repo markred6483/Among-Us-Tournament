@@ -3,9 +3,10 @@ import re
 
 class BaseClient(discord.Client):
   
-  def __init__(self, guild_name, intents):
+  def __init__(self, guild_name, intents=None):
     super().__init__(intents=intents)
-    self.guild = guild_name
+    self.guild_name = guild_name
+    self.guild = None
   
   def reset(self):
     self.category_channel = None
@@ -16,18 +17,18 @@ class BaseClient(discord.Client):
     self.participant_role = None
 
   async def on_ready(self):
-      self.guild = discord.utils.get(self.guilds, name=self.guild)
+      self.guild = discord.utils.get(self.guilds, name=self.guild_name)
       print(f'{self.user} linked to {self.guild.name}')
-
+  
   async def connect_to(self, channel):
     if channel.guild.voice_client:
       # can happen that guild.voice_client is not None and guild.me.voice is None
       if not channel.guild.me.voice or channel.guild.me.voice.channel != channel: 
         await channel.guild.voice_client.move_to(channel)
     else:
-      await channel.connect(reconnect=False)
-    await channel.guild.change_voice_state(
-      channel=channel, self_deaf=True, self_mute=True)
+      await channel.connect(reconnect=True)
+    #await channel.guild.change_voice_state(
+    #  channel=channel, self_deaf=True, self_mute=True)
   
   async def move_member(self, member, to, at=None, force_mobile=False):
     if member.voice and member.voice.channel.guild == self.guild:
@@ -40,6 +41,7 @@ class BaseClient(discord.Client):
           if force_mobile or not member.is_on_mobile():
             # We don't usually move members on mobile as they'd get bugged
             await member.move_to(to)
+            return True
     return False
   
   async def check_valid_name(self, named_deletable_obj, name):
@@ -145,3 +147,9 @@ class BaseClient(discord.Client):
       await self.refresh_mute_role(member, role)
       return True
     return False
+
+  async def close(self):
+    for vc in self.voice_clients:
+      await vc.disconnect()
+    await self.change_presence(status=discord.Status.offline)
+    await super().close()

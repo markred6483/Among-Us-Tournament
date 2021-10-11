@@ -3,17 +3,10 @@ import discord
 from rules import *
 from baseclient import BaseClient
 import os
-
-GUILD_NAME = "markred's server"
-CHILL_ROOM_NAME = "General"
-CATEGORY_CHANNEL_NAME = "Among Us Tournament"
-WAITING_CHAT_NAME = "chat"
-WAITING_ROOM_NAME = "Waiting Room"
-LOBBY_NAME_PREFIX = "Lobby Room "
-LOBBY_ROLE_PREFIX = "Among Us Tournament - Lobby "
-MANAGER_ROLE_NAME = "Among Us Tournament - Manager"
-PARTICIPANT_ROLE_NAME = "Among Us Tournament - Participant"
-BANNED_ROLE_NAME = "Among Us Tournament - Banned"
+import time
+from performance_test import run_test_clients
+from config import *
+import asyncio
 
 class CustomClient(BaseClient):
   
@@ -23,6 +16,7 @@ class CustomClient(BaseClient):
       LogDirectMessageRule(self),
       PrepareCmdRule(self),
       CleanCmdRule(self),
+      TerminateCmdRule(self),
       PromoteCmdRule(self),
       DemoteCmdRule(self),
       SummonCmdRule(self),
@@ -53,8 +47,10 @@ class CustomClient(BaseClient):
   async def on_ready(self):
     await super().on_ready()
     # Cache members for later use
+    print('Fetching guild members...')
+    t0 = time.time()
     members = await self.guild.fetch_members(limit=50000).flatten()
-    print(f'{len(members)} members fetched')
+    print(f'{len(members)} members fetched in {(time.time()-t0):.2f} seconds')
     await self.prepare()
   
   async def connect_to_waiting_room(self):
@@ -67,6 +63,9 @@ class CustomClient(BaseClient):
         return
   
   async def on_voice_state_update(self, member, voice_state1, voice_state2):
+    # it can happen on_voice_state_update fires before on_ready
+    # in this case self.guild is None and an exception would occur soon
+    if self.guild is None: return 
     if voice_state1.channel != voice_state2.channel:
       waiting_room = self.get_waiting_room()
       if waiting_room:
@@ -256,15 +255,32 @@ class CustomClient(BaseClient):
             channel, self.get_participant_role(), speak=unmute):
           return channel
 
-intents = discord.Intents.default()
-intents.members = True # to get all the members of the guild at start-up
-intents.presences = True # to know who is on mobile
-client = CustomClient(guild_name=GUILD_NAME, intents=intents)
-client.run(os.environ['DISCORD_TOKEN'])
+if __name__ == "__main__":
+  intents = discord.Intents.default()
+  intents.members = True # to get all the members of the guild at start-up
+  intents.presences = True # to know who is on mobile
+  client = CustomClient(guild_name=GUILD_NAME, intents=intents)
+
+  tasks = run_test_clients(GUILD_NAME, os.environ['DISCORD_TEST_TOKENS'].split())
+  tasks.append(client.start(os.environ['DISCORD_TOKEN']))
+  asyncio.get_event_loop().run_until_complete(asyncio.wait(tasks))
 
 '''
 TODO:
 - get rid of all get_* methods, instead set in the on_ready event method ?
-- await entire for loop instead of single iterations
+- parallel async: await entire for loop instead of single iterations
 - test giving both participant and manager roles to someone
+- Exception
+- traduzioni
+
+- waiting room solo a Utenti
+- special manager
+- mobile/offline/dnd for "summon" in lobby
+- summon -> send private message to who is not summoned
+- summon -> don't summon if in codenames or amongus rooms78
+
+DONE
+x mute unmute anche in lobby
+x summon all | waiting anche mobile
+x mobile/offline/dnd for summon in waiting-room
 '''

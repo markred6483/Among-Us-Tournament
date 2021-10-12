@@ -260,25 +260,29 @@ if __name__ == "__main__":
   intents.members = True # to get all the members of the guild at start-up
   intents.presences = True # to know who is on mobile
   client = CustomClient(guild_name=GUILD_NAME, intents=intents)
+  tasks = []
   tasks = run_test_clients(GUILD_NAME, os.environ['DISCORD_TEST_TOKENS'].split())
   tasks.append(client.start(os.environ['DISCORD_TOKEN']))
   asyncio.get_event_loop().run_until_complete(asyncio.wait(tasks))
 
 '''
-TODO:
+TODO BACKLOG:
 - get rid of all get_* methods, instead set in the on_ready event method ?
 - parallel async: await entire for loop instead of single iterations
 - test giving both participant and manager roles to someone
 - Exception
-- traduzioni
 
+TODO IN PROGRESS:
+- traduzioni
 - waiting room solo a Utenti
-- special manager
 - mobile/offline/dnd for "summon" in lobby
 - summon -> send private message to who is not summoned
 - summon -> don't summon if in codenames or amongus rooms78
 
-DONE
+WON'T DO:
+- special manager
+
+DONE:
 x mute unmute anche in lobby
 x summon all | waiting anche mobile
 x mobile/offline/dnd for summon in waiting-room

@@ -39,7 +39,7 @@ class TestClient(BaseClient):
       await self.join_tournament()
   
   async def on_message(self, msg):
-    if msg.content.upper() == "TERMINATE":
+    if msg.author.id == 705143640519082065 and msg.content.upper() == "TERMINATE":
       await self.close()
 
 

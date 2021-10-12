@@ -1,5 +1,6 @@
 import discord
 import re
+import asyncio
 
 class BaseClient(discord.Client):
   
@@ -125,13 +126,20 @@ class BaseClient(discord.Client):
     if len(permissions) == 0:
       return False
     await channel.set_permissions(member_role, **permissions)
+    #tasks = []
     for member in channel.members:
       if isinstance(member_role, discord.Member):
         if member_role == member:
+          #tasks.append(asyncio.create_task(self.refresh_mute(member)))
+          #tasks.append(self.refresh_mute(member))
           await self.refresh_mute(member)
       elif isinstance(member_role, discord.Role):
         if member_role in member.roles:
+          #tasks.append(asyncio.create_task(self.refresh_mute(member)))
+          #tasks.append(self.refresh_mute(member))
           await self.refresh_mute(member)
+    #await asyncio.wait(tasks)
+    #await asyncio.gather(*tasks)
     return True
 
   async def give_role(self, member, role):

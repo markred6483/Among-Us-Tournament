@@ -1,7 +1,8 @@
 import discord
 import random
 import math
-from config import OK_REACTION, LOBBY_CAPACITY
+from config import OK_REACTION, KO_REACTION, LOBBY_CAPACITY
+import sys
 
 class MessageRule:
   def __init__(self, client):
@@ -38,14 +39,15 @@ class CmdRule(MessageRule):
       try: # DEBUG
         cmd = args[0]
       except Exception as e:
-        print(self.__class__.name)
+        print(self.__class__.__name__)
         print(msg)
         print(msg.content)
         raise e
       args = args[1:]
       if await self.evaluate(cmd, args, msg):
         async with msg.channel.typing():
-          await self.execute(args, msg)
+          try: await self.execute(args, msg)
+          except Exception as e: await self.on_execute_error(msg, e)
   async def evaluate(self, cmd, args, msg):
     if await super().evaluate(msg):
       if cmd == self.cmd:
@@ -55,11 +57,19 @@ class CmdRule(MessageRule):
       try: await msg.add_reaction(OK_REACTION)
       except discord.errors.NotFound: pass
       await super().execute(msg)
-  async def publish(self, s):
+  async def on_execute_error(self, msg, e):
+    print(f"Error while executing command {msg.content}", file=sys.stderr)
+    print(e)
+    await msg.add_reaction(KO_REACTION)
+  async def publish(self, embed):
     if self.client.get_waiting_chat():
-      embed = discord.Embed()
-      embed.description = s
-      await self.client.get_waiting_chat().send(embed=embed)
+      if isinstance(embed, str):
+        embed = discord.Embed(description = embed)
+      try:
+        await self.client.get_waiting_chat().send(embed=embed)
+      except discord.errors.NotFound as e:
+        print(f"404 Waiting Room", file=sys.stderr)
+        print(e)
 
 class ProtectedCmdRule(CmdRule):
   async def evaluate(self, cmd, args, msg):
@@ -90,7 +100,7 @@ class ProtectedWaitingChatCmdRule(ProtectedCmdRule):
         return (await self.client.get_member(msg.author)) != None
     return False
 
-class PrepareCmdRule(ProtectedWaitingChatCmdRule):
+class PrepareCmdRule(ProtectedCmdRule):
   def __init__(self, client):
     super().__init__(client, "PREPARE")
   async def execute(self, args, msg):
@@ -168,46 +178,69 @@ class BroadcastCmdRule(ProtectedWaitingChatCmdRule):
 class SummonCmdRule(ProtectedWaitingChatCmdRule):
   def __init__(self, client):
     super().__init__(client, "SUMMON", 0, 1)
+  async def evaluate(self, cmd, args, msg):
+    return await super().evaluate(cmd, args, msg) \
+       and (len(args) == 0 or args[0] == "+")
+       #and not self.client.is_lobby_phase()
   async def execute(self, args, msg):
-    do_all = False
-    if len(args) == 1:
-      if args[0] == "ALL":
-        do_all = True
-      else:
-        return False
+    do_all = len(args) == 1
     participants = self.client.get_participants()
-    buffer_ko = ["**Couldn't summon because far away**: "]
     buffer_present = ["**Already here**: "]
-    buffer_ok = ["**Summoned**: "]
+    buffer_summoned = ["\n**Ready for summon**: "]
+    buffer_faraway = ["\n**Couldn't summon because far away**: "]
     if do_all:
-      buffer_mobile = ["**Summoned even if invisible or on mobile**: "]
+      buffer_mobile = ["\n**Summoned even if on mobile**: "]
+      buffer_invisible = ["\n**Summoned even if invisible**: "]
+      buffer_busy = ["\n**Summoned even if busy**:"]
     else:
-      buffer_mobile = ["**Not summoned because invisible or on mobile**: "]
+      buffer_mobile = ["\n**Not summoned because on mobile**: "]
+      buffer_invisible = ["\n**Not summoned because invisible**: "]
+      buffer_busy = ["\n**Not summoned because busy**:"]
+    buffer_error = ["\n**Couldn't summon because of some error**: "]
+    
     for participant in participants:
-      if participant.voice and participant.voice.channel.guild == self.client.guild:
-        # member is connected to this server
-        if participant.voice.channel != self.client.get_waiting_room():
-          # member isn't waiting in the waiting room
-          if participant.is_on_mobile() or participant.status == discord.Status.offline:
-            # Usually we don't move members on mobile as they'd get bugged
-            buffer_mobile.append(participant.mention)
-            if do_all:
-              await participant.move_to(self.client.get_waiting_room())
-          else:
-            buffer_ok.append(participant.mention)
-            await participant.move_to(self.client.get_waiting_room())
-        else:
-          # member is waiting in the waiting room
-          buffer_present.append(participant.mention)
-      else:
+      if self.client.is_faraway(participant):
         # member isn't connected to this server
-        buffer_ko.append(participant.mention)
-    buffer_ok[0] += str(len(buffer_ok) - 1)
-    buffer_ko[0] += str(len(buffer_ko) - 1)
+        buffer_faraway.append(participant.mention)
+        continue
+      elif self.client.is_waiting(participant):
+        # member is already in the waiting-room
+        buffer_present.append(participant.mention)
+        continue
+      elif participant.is_on_mobile():
+        # Usually we don't move members on mobile, as they'd get bugged
+        buffer_mobile.append(participant.mention)
+        if not do_all: continue
+      elif self.client.is_offline_or_invisible(participant):
+        # Usually we don't move members with invisible status, as they could be on mobile
+        buffer_invisible.append(participant.mention)
+        if not do_all: continue
+      elif self.client.is_busy(participant):
+        # Usually we don't move members in some known gaming channels
+        buffer_busy.append(participant.mention)
+        if not do_all: continue
+      else:
+        # member is ready to be summoned
+        buffer_summoned.append(participant.mention)
+      try:
+        await participant.move_to(self.client.get_waiting_room())
+      except discord.errors.HTTPException as e:
+        buffer_error.append(participant.mention)
+        # TODO as of now a participant could go in buffer_error and another buffer
+        print(f"Member {participant} not connected to voice channel", file=sys.stderr)
+        print(e)
+    
     buffer_present[0] += str(len(buffer_present) - 1)
+    buffer_summoned[0] += str(len(buffer_summoned) - 1)
+    buffer_faraway[0] += str(len(buffer_faraway) - 1)
     buffer_mobile[0] += str(len(buffer_mobile) - 1)
+    buffer_invisible[0] += str(len(buffer_invisible) - 1)
+    buffer_busy[0] += str(len(buffer_busy) - 1)
+    buffer_error[0] += str(len(buffer_error) - 1)
     await self.publish("\n".join(
-        buffer_ko + buffer_present + buffer_ok + buffer_mobile))
+        buffer_present + buffer_summoned + buffer_faraway + \
+        buffer_mobile + buffer_invisible + buffer_busy + \
+        buffer_error ))
     await super().execute(args, msg)
 
 class MuteCmdRule(ProtectedWaitingChatCmdRule):
@@ -223,25 +256,25 @@ class UnmuteCmdRule(ProtectedWaitingChatCmdRule):
   def __init__(self, client):
     super().__init__(client, "UNMUTE")
   async def execute(self, args, msg):
-    channel = await self.client.mute_channel_managed_by(msg.author, unmute=True)
-    if channel:
-      await self.publish(f'Unmuted {channel.name}')
+    affected_channel = await self.client.mute_channel_managed_by(msg.author, unmute=True)
+    if affected_channel:
+      await self.publish(f'Unmuted {affected_channel.name}')
     await super().execute(args, msg)
 
 class StartCmdRule(ProtectedWaitingChatCmdRule):
   def __init__(self, client):
-    super().__init__(client, "START")
+    super().__init__(client, "START", 0, 1)
+  async def evaluate(self, cmd, args, msg):
+    return await super().evaluate(cmd, args, msg) \
+       and (len(args) == 0 or args[0] == "+") \
+       and not self.client.is_lobby_phase()
   async def execute(self, args, msg):
-    await self.client.delete_lobbies()
-    
+    do_all = len(args) == 1
+
     waiters = set(self.client.get_waiting_room().members)
     participants = set(self.client.get_participants())
     players = participants.intersection(waiters)
     absents = participants.difference(waiters)
-
-    buffer = []
-    buffer.append(f'Participants **not here**: *{len(absents)}*')
-    buffer.append(f'Participants **waiting**: *{len(players)}*')
 
     print('members:', len(self.client.guild.members))
     print('waiters:', len(waiters))
@@ -255,18 +288,27 @@ class StartCmdRule(ProtectedWaitingChatCmdRule):
       lobby = lobbies[p % n_lobbies]
       member = players[p]
       lobby.append(member)
-
+    
+    buffer = [f'Participants in {self.client.get_waiting_room().name}: {len(players)}',
+              f'Participants missing: {len(absents)}']
     for l in range(n_lobbies):
       players = lobbies[l]
       lobby_channel = await self.client.create_lobby(l+1, players)
-      buffer.append(f'**Lobby {l+1}**: *{len(players)}*')
+      buffer.append(f'\n**Lobby {l+1}**: *{len(players)}*')
       for member in players:
-        if member.is_on_mobile():
-          # We don't move members on mobile as they'd get bugged
-          buffer.append(f'{member.mention} on **mobile**, move by yourself!')
+        if member.is_on_mobile() or self.client.is_offline_or_invisible(member):
+          # We usually don't move members on mobile as they'd get bugged
+          # and invisible ones could be on mobile
+          buffer.append(f'{member.mention} on 📱 or 👻')
+          if not do_all: continue
         else:
-          await member.move_to(lobby_channel)
           buffer.append(member.mention)
+        try:
+          await member.move_to(lobby_channel)
+        except discord.errors.HTTPException as e:
+          buffer[-1] = buffer[-1] + ' ❌'
+          print(f"Member {member} not connected to voice", file=sys.stderr)
+          print(e)
 
     await self.publish('\n'.join(buffer))
     await super().execute(args, msg)
@@ -274,6 +316,9 @@ class StartCmdRule(ProtectedWaitingChatCmdRule):
 class EndCmdRule(ProtectedWaitingChatCmdRule):
   def __init__(self, client):
     super().__init__(client, "END")
+  async def evaluate(self, cmd, args, msg):
+    return await super().evaluate(cmd, args, msg) \
+       and self.client.is_lobby_phase()
   async def execute(self, args, msg):
     await self.client.delete_lobbies()
     await super().execute(args, msg)
@@ -285,7 +330,7 @@ class CleanCmdRule(ProtectedWaitingChatCmdRule):
     await self.client.clean()
     await super().execute(args, msg)
 
-class TerminateCmdRule(ProtectedWaitingChatCmdRule):
+class TerminateCmdRule(ProtectedCmdRule):
   def __init__(self, client):
     super().__init__(client, "TERMINATE")
   async def execute(self, args, msg):
@@ -308,4 +353,16 @@ class QuitCmdRule(WaitingChatCmdRule):
     member = await self.client.get_member(msg.author)
     if await self.client.revoke_participant_role(member):
       await self.publish(f'{member.mention} quits the tournament')
+    await super().execute(args, msg)
+
+class ListCmdRule(WaitingChatCmdRule):
+  def __init__(self, client):
+    super().__init__(client, "LIST")
+  async def execute(self, args, msg):
+    participants = self.client.get_participants()
+    buffer = []
+    for member in participants:
+      buffer.append(str(member))
+    buffer[0] = f'{len(participants)} participants:\n' + buffer[0]
+    await self.publish(", ".join(buffer))
     await super().execute(args, msg)

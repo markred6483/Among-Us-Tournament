@@ -1,17 +1,19 @@
-import discord
-#import nacl
-from rules import *
-from baseclient import BaseClient
+import asyncio
 import os
 import time
-from performance_test import run_test_clients
+import discord
+#import nacl
 from config import *
-import asyncio
+from rules import *
+from test_helper import TestHelperClient
+from performance_test import run_test_clients
+from baseclient import BaseClient
 
 class CustomClient(BaseClient):
   
   def __init__(self, guild_name, intents):
     super().__init__(guild_name=guild_name, intents=intents)
+    self.reset()
     self.rules = [
       LogDirectMessageRule(self),
       PrepareCmdRule(self),
@@ -20,20 +22,19 @@ class CustomClient(BaseClient):
       PromoteCmdRule(self),
       DemoteCmdRule(self),
       SummonCmdRule(self),
+      BroadcastCmdRule(self),
       StartCmdRule(self),
       EndCmdRule(self),
-      BroadcastCmdRule(self),
+      BanCmdRule(self),
+      UnbanCmdRule(self),
       MuteCmdRule(self),
       UnmuteCmdRule(self),
       BringCmdRule(self),
       KickCmdRule(self),
-      BanCmdRule(self),
-      UnbanCmdRule(self),
       JoinCmdRule(self),
       QuitCmdRule(self),
+      ListCmdRule(self),
     ]
-    self.chill_room = None
-    self.reset()
   
   def reset(self):
     self.category_channel = None
@@ -43,6 +44,8 @@ class CustomClient(BaseClient):
     self.manager_role = None
     self.participant_role = None
     self.banned_role = None
+    self.chill_room = None
+    self.verified_role = None
   
   async def on_ready(self):
     await super().on_ready()
@@ -131,31 +134,42 @@ class CustomClient(BaseClient):
       LOBBY_NAME_PREFIX + index, self.get_tournament_category(), overwrites)
     return lobby
 
-  async def delete_lobbies(self):
+  async def delete_lobbies(self, backup_channel=None):
     if self.get_tournament_category():
-      for channel in self.category_channel.channels:
+      if not backup_channel: backup_channel = self.get_waiting_room()
+      for channel in self.category_channel.voice_channels:
         if LOBBY_NAME_PREFIX in channel.name:
-          await self.delete_channel(channel, self.get_waiting_room())
+          await self.delete_channel(channel, backup_channel)
     for role in self.guild.roles:
       if LOBBY_ROLE_PREFIX in role.name:
         await self.delete_if_exists(role)
   
   async def clean(self):
-    await self.delete_lobbies()
-    if self.get_tournament_category():
-      for channel in self.category_channel.channels:
-        await self.delete_channel(channel, self.get_chill_room())
-      await self.delete_if_exists(self.category_channel)
-    if self.get_manager_role():
-      await self.delete_if_exists(self.manager_role)
     if self.get_participant_role():
       await self.delete_if_exists(self.participant_role)
+    if self.get_manager_role():
+      await self.delete_if_exists(self.manager_role)
     if self.get_banned_role():
       await self.delete_if_exists(self.banned_role)
+    await self.delete_lobbies(self.get_chill_room())
+    if self.get_tournament_category():
+      for channel in self.category_channel.voice_channels:
+        await self.delete_channel(channel, self.get_chill_room())
+      for channel in self.category_channel.channels:
+        await self.delete_if_exists(channel)
+      await self.delete_if_exists(self.category_channel)
     self.reset()
   
+  def get_verified_role(self):
+    if not self.verified_role:
+      self.verified_role = discord.utils.get(
+        self.guild.channels, name=VERIFIED_ROLE_NAME)
+    return self.verified_role
+
   def get_chill_room(self):
-    self.chill_room = discord.utils.get(self.guild.channels, name=CHILL_ROOM_NAME)
+    if not self.chill_room:
+      self.chill_room = discord.utils.get(
+        self.guild.channels, name=CHILL_ROOM_NAME)
     return self.chill_room
   
   def get_tournament_category(self):
@@ -207,7 +221,7 @@ class CustomClient(BaseClient):
   
   async def give_banned_role(self, member):
     if await self.give_role(member, self.get_banned_role()):
-      await self.revoke_manager_role(member, False)
+      await self.revoke_manager_role(member, move_to_waiting=False)
       await self.revoke_participant_role(member)
       return True
     return False
@@ -225,7 +239,7 @@ class CustomClient(BaseClient):
 
   async def revoke_manager_role(self, member, move_to_waiting=True):
     if await self.revoke_role(member, self.get_manager_role()):
-      if move_to_waiting and self.get_manager_role() not in member.roles:
+      if move_to_waiting and self.get_participant_role() not in member.roles:
         await self.maybe_move_from_lobby_to_waiting(member)
       return True
     return False
@@ -240,29 +254,50 @@ class CustomClient(BaseClient):
           to=self.get_waiting_room(),
           force_mobile=True)
   
-  def get_participants(self):
-    return self.get_participant_role().members
-  
   def get_managers(self):
     return self.get_manager_role().members
   
+  def get_participants(self):
+    return self.get_participant_role().members
+  
+  def is_waiting(self, member):
+    return member.voice and member.voice.channel \
+       and member.voice.channel == self.get_waiting_room()
+
+  def is_busy(self, member):
+    return member.voice and member.voice.channel \
+       and member.voice.channel.category.name in MOVE_PROTECTED_CATEGORIES
+  
   async def mute_channel_managed_by(self, user, unmute=False):
     member = await self.get_member(user)
-    if member and member.voice and member.voice.channel:
+    if not self.is_faraway(member):
       channel = member.voice.channel
       if channel.category == self.get_tournament_category():
         if await self.set_channel_permissions(
             channel, self.get_participant_role(), speak=unmute):
           return channel
+  
+  def is_lobby_phase(self):
+    return bool(discord.utils.find(
+      lambda c: LOBBY_NAME_PREFIX in c.name,
+      self.get_tournament_category().voice_channels))
 
 if __name__ == "__main__":
+  
   intents = discord.Intents.default()
   intents.members = True # to get all the members of the guild at start-up
   intents.presences = True # to know who is on mobile
-  client = CustomClient(guild_name=GUILD_NAME, intents=intents)
+
   tasks = []
   tasks = run_test_clients(GUILD_NAME, os.environ['DISCORD_TEST_TOKENS'].split())
-  tasks.append(client.start(os.environ['DISCORD_TOKEN']))
+
+  #test_helper = TestHelperClient(guild_name=GUILD_NAME, intents=intents)
+  #tasks.append(test_helper.start(os.environ['DISCORD_TEST_HELPER_TOKEN']))
+
+  main_client = CustomClient(guild_name=GUILD_NAME, intents=intents)
+  #tasks.append(main_client.start(os.environ['DISCORD_TOKEN']))
+  tasks.append(main_client.start(os.environ['DISCORD_TEST_HELPER_TOKEN']))
+
   asyncio.get_event_loop().run_until_complete(asyncio.wait(tasks))
 
 '''
@@ -271,19 +306,17 @@ TODO BACKLOG:
 - parallel async: await entire for loop instead of single iterations
 - test giving both participant and manager roles to someone
 - Exception
+- GuildClient
 
 TODO IN PROGRESS:
 - traduzioni
 - waiting room solo a Utenti
-- mobile/offline/dnd for "summon" in lobby
 - summon -> send private message to who is not summoned
-- summon -> don't summon if in codenames or amongus rooms78
-
-WON'T DO:
-- special manager
 
 DONE:
-x mute unmute anche in lobby
-x summon all | waiting anche mobile
-x mobile/offline/dnd for summon in waiting-room
+- mute unmute anche in lobby
+- summon all | waiting anche mobile
+- mobile/offline/dnd for summon in waiting-room
+- summon -> don't summon if in codenames or amongus rooms
+- mobile/offline/dnd for "summon" in lobby
 '''

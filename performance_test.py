@@ -1,5 +1,4 @@
 from baseclient import BaseClient
-import asyncio
 import discord
 from config import WAITING_ROOM_NAME, WAITING_CHAT_NAME
 
@@ -16,7 +15,15 @@ class TestClient(BaseClient):
     self.waiting_room = discord.utils.get(self.guild.channels, name=WAITING_ROOM_NAME)
     self.waiting_chat = discord.utils.get(self.guild.channels, name=WAITING_CHAT_NAME)
     await self.connect_to_waiting_room()
-    await self.join_tournament()
+    #await self.join_tournament()
+  
+  async def on_guild_channel_create(self, channel):
+    if channel.name == WAITING_ROOM_NAME:
+      self.waiting_room = channel
+      await self.connect_to_waiting_room() 
+    elif channel.name == WAITING_CHAT_NAME:
+      self.waiting_chat = channel
+      await self.join_tournament()
   
   async def connect_to_waiting_room(self):
     if self.waiting_room:
@@ -29,14 +36,6 @@ class TestClient(BaseClient):
     if self.waiting_chat:
       print(f'{self.user} joining tournament...')
       await self.waiting_chat.send('jOiN')
-  
-  async def on_guild_channel_create(self, channel):
-    if channel.name == WAITING_ROOM_NAME:
-      self.waiting_room = channel
-      await self.connect_to_waiting_room() 
-    elif channel.name == WAITING_CHAT_NAME:
-      self.waiting_chat = channel
-      await self.join_tournament()
   
   async def on_message(self, msg):
     if msg.author.id == 705143640519082065 and msg.content.upper() == "TERMINATE":

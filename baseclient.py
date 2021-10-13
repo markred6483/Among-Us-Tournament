@@ -1,6 +1,5 @@
 import discord
 import re
-import asyncio
 
 class BaseClient(discord.Client):
   
@@ -32,15 +31,17 @@ class BaseClient(discord.Client):
     #  channel=channel, self_deaf=True, self_mute=True)
   
   async def move_member(self, member, to, at=None, force_mobile=False):
-    if member.voice and member.voice.channel.guild == self.guild:
+    if not self.is_faraway(member):
       # member is connected to this server, so can move it
       if member.voice.channel != to:
         # member isn't already in the destination channel
         if not at or member.voice.channel == at or member.voice.channel.category == at:
           # no condition on the current channel
           # or member is currently in the specified provenance channel
-          if force_mobile or not member.is_on_mobile():
-            # We don't usually move members on mobile as they'd get bugged
+          if force_mobile or not \
+              (member.is_on_mobile() or self.is_offline_or_invisible(member)):
+            # Usually we don't move members on mobile as they'd get bugged
+            # and invisible ones could be on mobile
             await member.move_to(to)
             return True
     return False
@@ -85,7 +86,7 @@ class BaseClient(discord.Client):
   async def delete_channel(self, channel, backup_channel=None):
     if backup_channel and isinstance(channel, discord.VoiceChannel):
       for member in channel.members:
-        await member.move_to(backup_channel)
+        await self.move_member(member, backup_channel, force_mobile=True)
     await self.delete_if_exists(channel)
   
   mention_re = re.compile("<@!?([0-9]{18})>")
@@ -94,12 +95,17 @@ class BaseClient(discord.Client):
       return member_user_id_mention
     if isinstance(member_user_id_mention, discord.User):
       member_user_id_mention = member_user_id_mention.id
-    else: # member_user_id_mention should be a string
+    elif isinstance(member_user_id_mention, str):
       try:
         member_user_id_mention = int(member_user_id_mention)
       except ValueError:
-        member_user_id_mention = int(
-          self.__class__.mention_re.match(member_user_id_mention).group(1))
+          match = self.__class__.mention_re.match(member_user_id_mention)
+          if match:
+            member_user_id_mention = int(match.group(1))
+          else:
+            raise ValueError(f"{member_user_id_mention} isn't a valid member ID or mention")
+    else:
+      raise ValueError(f"member_user_id_mention should be a User or str")
     member = self.guild.get_member(member_user_id_mention)
     if not member: # member not cached
       member = await self.guild.fetch_member(member_user_id_mention)
@@ -107,9 +113,8 @@ class BaseClient(discord.Client):
     return member
   
   async def refresh_mute(self, member):
-    if member.voice:
-      await member.move_to(member.voice.channel)
-      print(f'Forcing mute refresh of {member} in {member.voice.channel.name}')
+    await member.move_to(member.voice.channel)
+    #print(f'Forcing mute refresh of {member} in {member.voice.channel.name}')
 
   async def refresh_mute_role(self, member, role):
     if member.voice and not member.voice.channel.overwrites_for(role).is_empty():
@@ -155,6 +160,14 @@ class BaseClient(discord.Client):
       await self.refresh_mute_role(member, role)
       return True
     return False
+
+  def is_faraway(self, member):
+    return member.voice is None \
+        or member.voice.channel is None \
+        or member.voice.channel.guild != self.guild
+  
+  def is_offline_or_invisible(self, member):
+    return member.status == discord.Status.offline
 
   async def close(self):
     for vc in self.voice_clients:

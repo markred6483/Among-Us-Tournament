@@ -4,6 +4,7 @@ import discord
 from config import *
 from rules import *
 from baseclient import BaseClient
+from rwlock import RWLock
 
 class TournamentClient(BaseClient):
   
@@ -12,28 +13,29 @@ class TournamentClient(BaseClient):
     intents.members = True # to get all the members of the guild at start-up
     intents.presences = True # to know who is on mobile
     super().__init__(guild_name=guild_name, intents=intents)
+    self.env_lock = RWLock()
     self.reset()
-    self.rules = [
-      LogDirectMessageRule(self),
-      PrepareCmdRule(self),
-      CleanCmdRule(self),
+    self.processor = RuleProcessor(
       TerminateCmdRule(self),
-      PromoteCmdRule(self),
-      DemoteCmdRule(self),
-      SummonCmdRule(self),
-      BroadcastCmdRule(self),
+      LogDirectMessageRule(self),
+      JoinCmdRule(self),
+      QuitCmdRule(self),
+      ListCmdRule(self),
       StartCmdRule(self),
       EndCmdRule(self),
-      BanCmdRule(self),
-      UnbanCmdRule(self),
+      SummonCmdRule(self),
+      BroadcastCmdRule(self),
       MuteCmdRule(self),
       UnmuteCmdRule(self),
       BringCmdRule(self),
       KickCmdRule(self),
-      JoinCmdRule(self),
-      QuitCmdRule(self),
-      ListCmdRule(self),
-    ]
+      PromoteCmdRule(self),
+      DemoteCmdRule(self),
+      BanCmdRule(self),
+      UnbanCmdRule(self),
+      PrepareCmdRule(self),
+      CleanCmdRule(self),
+    )
   
   def reset(self):
     self.category_channel = None
@@ -54,15 +56,14 @@ class TournamentClient(BaseClient):
     members = await self.guild.fetch_members(limit=50000).flatten()
     print(f'{len(members)} members fetched in {(time.time()-t0):.2f} seconds')
     await self.prepare()
+    await self.execute_old_commands()
   
   async def connect_to_waiting_room(self):
     if self.get_waiting_room():
       await self.connect_to(self.waiting_room)
   
   async def on_message(self, msg):
-    for processor in self.rules:
-      if await processor.process(msg):
-        return
+    await self.processor.run(msg)
   
   async def on_voice_state_update(self, member, voice_state1, voice_state2):
     # it can happen on_voice_state_update fires before on_ready
@@ -85,7 +86,7 @@ class TournamentClient(BaseClient):
       if discord.utils.get(msg.reactions, me=True):
         break
       if not msg.author in already_done:
-        if await JoinCmdRule(self).process(msg) or await QuitCmdRule(self).process(msg):
+        if await RuleProcessor(JoinCmdRule(self), QuitCmdRule(self)).run(msg):
           already_done.add(msg.author)
   
   async def prepare(self):
@@ -113,7 +114,6 @@ class TournamentClient(BaseClient):
           self.participant_role: discord.PermissionOverwrite(speak=True),
           self.manager_role: discord.PermissionOverwrite(speak=True)
       })
-    await self.execute_old_commands()
     await self.connect_to_waiting_room()
   
   async def create_lobby(self, index, members):

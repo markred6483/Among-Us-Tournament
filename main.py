@@ -27,8 +27,6 @@ TODO BACKLOG:
 - get rid of all get_* methods, instead set in the on_ready event method ?
 - parallel async: await entire for loop instead of single iterations
 - test giving both participant and manager roles to someone
-- Exception
-- GuildClient
 
 TODO IN PROGRESS:
 - traduzioni
@@ -41,4 +39,6 @@ DONE:
 - mobile/offline/dnd for summon in waiting-room
 - summon -> don't summon if in codenames or amongus rooms
 - mobile/offline/dnd for "summon" in lobby
+- lock
+- Exception
 '''

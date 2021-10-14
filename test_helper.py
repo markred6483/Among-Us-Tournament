@@ -4,7 +4,10 @@ from config import WAITING_ROOM_NAME, VERIFIED_ROLE_NAME
 
 class TestHelperClient(BaseClient):
   
-  def __init__(self, guild_name, intents=None):
+  def __init__(self, guild_name):
+    intents = discord.Intents.default()
+    intents.members = True # to get all the members of the guild at start-up
+    intents.presences = True # to know who is on mobile
     super().__init__(guild_name=guild_name, intents=intents)
     self.is_moving = False
     self.waiting_room = None

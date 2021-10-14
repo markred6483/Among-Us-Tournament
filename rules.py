@@ -34,20 +34,18 @@ class CmdRule(MessageRule):
     self.min_args = min_args
     self.max_args = max_args
   async def process(self, msg):
+    #if not msg.author.bot:
     if msg.author != self.client.user:
-      args = msg.content.upper().split()
-      try: # DEBUG
+      if msg.content != "":
+        args = msg.content.upper().split()
         cmd = args[0]
-      except Exception as e:
-        print(self.__class__.__name__)
-        print(msg)
-        print(msg.content)
-        raise e
-      args = args[1:]
-      if await self.evaluate(cmd, args, msg):
-        async with msg.channel.typing():
-          try: await self.execute(args, msg)
-          except Exception as e: await self.on_execute_error(msg, e)
+        args = args[1:]
+        if await self.evaluate(cmd, args, msg):
+          async with msg.channel.typing():
+            try: await self.execute(args, msg)
+            except Exception as e: await self.on_execute_error(msg, e)
+          return True
+      return False
   async def evaluate(self, cmd, args, msg):
     if await super().evaluate(msg):
       if cmd == self.cmd:

@@ -1,9 +1,10 @@
-import discord
-import random
-import math
-from config import OK_REACTION, KO_REACTION, LOBBY_CAPACITY
 import sys
 from traceback import print_exc
+import random
+import math
+import discord
+from config import OK_REACTION, KO_REACTION, LOBBY_CAPACITY
+
 
 class RuleProcessor:
   def __init__(self, *rules):
@@ -12,7 +13,8 @@ class RuleProcessor:
     for rule in self.rules:
       if await rule.process(msg): return True
     return False
-    
+
+
 class MessageRule:
   def __init__(self, client):
     self.client = client
@@ -49,9 +51,7 @@ class CmdRule(MessageRule):
         args = msg.content.upper().split()
         cmd = args[0]
         args = args[1:]
-        print(f"Evaluating rule {self.__class__.__name__}")
         if await self.evaluate(cmd, args, msg):
-          print(f"Executing rule {self.__class__.__name__}")
           async with msg.channel.typing():
             try: await self.execute(args, msg)
             except Exception as e: await self.on_execute_error(msg, e)

@@ -1,10 +1,10 @@
 import time
 import discord
 #import nacl
+from rwlock import RWLock
+from base_client import BaseClient
 from config import *
 from rules import *
-from baseclient import BaseClient
-from rwlock import RWLock
 
 class TournamentClient(BaseClient):
   

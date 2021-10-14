@@ -1,5 +1,6 @@
-import discord
 import re
+import discord
+
 
 class BaseClient(discord.Client):
   
@@ -15,7 +16,7 @@ class BaseClient(discord.Client):
     self.lobbies = None
     self.manager_role = None
     self.participant_role = None
-
+  
   async def on_ready(self):
       self.guild = discord.utils.get(self.guilds, name=self.guild_name)
       print(f'{self.user} linked to {self.guild.name}')

@@ -9,11 +9,11 @@ class RWLock(object):
             from rwlock import RWLock
             my_obj_rwlock = RWLock()
             # When reading from my_obj:
-            with my_obj_rwlock.r_locked():
-                do_read_only_things_with(my_obj)
+            async with my_obj_rwlock.r_locked():
+                await do_read_only_things_with(my_obj)
             # When writing to my_obj:
-            with my_obj_rwlock.w_locked():
-                mutate(my_obj)
+            async with my_obj_rwlock.w_locked():
+                await mutate(my_obj)
     """
 
     def __init__(self):

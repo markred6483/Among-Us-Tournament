@@ -1,5 +1,5 @@
-from baseclient import BaseClient
 import discord
+from base_client import BaseClient
 from config import WAITING_ROOM_NAME, VERIFIED_ROLE_NAME
 
 class TestHelperClient(BaseClient):

@@ -51,7 +51,7 @@ class BaseClient(discord.Client):
     if named_deletable_obj.name != name:
       await named_deletable_obj.delete()
       raise ValueError(
-        f'{name} is not a valid name for a {named_deletable_obj.__class__.__name__}')
+        f'{name} is not a valid name for a {named_deletable_obj.__class__.__name__}. What about {named_deletable_obj.name}?')
   
   async def create_role(self, name):
     role = await self.guild.create_role(name=name)
@@ -70,13 +70,20 @@ class BaseClient(discord.Client):
         name=name, overwrites=overwrites, category=category)
     await self.check_valid_name(channel, name)
     return channel
-  
+
+  async def create_text_channel(self, name, *,
+      overwrites=None, category=None, reason=None, **options):
+    channel = await self.guild.create_text_channel(name,
+        overwrites=overwrites, category=category, reason=reason, **options)
+    await self.check_valid_name(channel, name)
+    return channel
+  '''
   async def create_text_channel(self, name, category=None, overwrites=None):
     channel = await self.guild.create_text_channel(
         name=name, overwrites=overwrites, category=category)
     await self.check_valid_name(channel, name)
     return channel
-  
+  '''
   async def delete_if_exists(self, deletable):
     try:
       await deletable.delete()

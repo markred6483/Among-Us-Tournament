@@ -3,8 +3,10 @@ import discord
 #import nacl
 from rwlock import RWLock
 from base_client import BaseClient
-from config import *
+from constants import *
 from rules import *
+import permissions
+import database
 
 class TournamentClient(BaseClient):
   
@@ -53,7 +55,9 @@ class TournamentClient(BaseClient):
     # Cache members for later use
     print('Fetching guild members...')
     t0 = time.time()
-    members = await self.guild.fetch_members(limit=50000).flatten()
+    #members = await self.guild.fetch_members(limit=50000).flatten()
+    members = [await self.get_member(id)
+        for id in await database.get_participants_ids()]
     print(f'{len(members)} members fetched in {(time.time()-t0):.2f} seconds')
     await self.prepare()
     await self.execute_old_commands()
@@ -104,33 +108,26 @@ class TournamentClient(BaseClient):
         CATEGORY_CHANNEL_NAME)
     if not self.get_waiting_chat():
       self.waiting_chat = await self.create_text_channel(
-        WAITING_CHAT_NAME, self.category_channel, {
-          self.banned_role: discord.PermissionOverwrite(
-            send_messages=False )})
+        name=WAITING_CHAT_NAME,
+        category=self.category_channel,
+        slowmode_delay=CHAT_COOLDOWN_SECONDS,
+        overwrites=permissions.get_chat_overwrites(self))
     if not self.get_waiting_room():
       self.waiting_room = await self.create_voice_channel(
-        WAITING_ROOM_NAME, self.category_channel, {
-          self.guild.default_role: discord.PermissionOverwrite(speak=False),
-          self.participant_role: discord.PermissionOverwrite(speak=True),
-          self.manager_role: discord.PermissionOverwrite(speak=True)
-      })
+        name=WAITING_ROOM_NAME,
+        category=self.category_channel,
+        overwrites=permissions.get_room_overwrites(self))
     await self.connect_to_waiting_room()
   
   async def create_lobby(self, index, members):
     index = str(index)
     lobby_role = await self.create_role(LOBBY_ROLE_PREFIX + index)
-    overwrites = {
-      self.guild.default_role: discord.PermissionOverwrite(
-        connect = False, view_channel = False),
-      self.get_manager_role(): discord.PermissionOverwrite(
-        connect = True, view_channel = True),
-      lobby_role: discord.PermissionOverwrite(
-        connect = True, view_channel = True)
-    }
     for member in members:
       await self.give_role(member, lobby_role)
     lobby = await self.create_voice_channel(
-      LOBBY_NAME_PREFIX + index, self.get_tournament_category(), overwrites)
+      name=LOBBY_NAME_PREFIX + index,
+      category=self.get_tournament_category(),
+      overwrites=permissions.get_lobby_overwrites(self, lobby_role))
     return lobby
 
   async def delete_lobbies(self, backup_channel=None):
@@ -161,8 +158,7 @@ class TournamentClient(BaseClient):
   
   def get_verified_role(self):
     if not self.verified_role:
-      self.verified_role = discord.utils.get(
-        self.guild.channels, name=VERIFIED_ROLE_NAME)
+      self.verified_role = self.get_role(VERIFIED_ROLE_NAME)
     return self.verified_role
 
   def get_chill_room(self):
@@ -211,12 +207,13 @@ class TournamentClient(BaseClient):
   async def give_participant_role(self, member):
     if self.get_banned_role() in member.roles:
       return False
+    await database.put_participant_id(member.id)
     return await self.give_role(member, self.get_participant_role())
 
   async def give_manager_role(self, member):
     if self.get_banned_role() in member.roles:
       return False
-    return await self.give_role(member, self.get_manager_role())
+    await self.give_role(member, self.get_manager_role())
   
   async def give_banned_role(self, member):
     if await self.give_role(member, self.get_banned_role()):
@@ -227,6 +224,7 @@ class TournamentClient(BaseClient):
 
   async def revoke_participant_role(self, member, move_to_waiting=True):
     if await self.revoke_role(member, self.get_participant_role()):
+      await database.del_participant_id(member.id)
       for role in member.roles:
         if LOBBY_ROLE_PREFIX in role.name:
           await self.revoke_role(member, role)

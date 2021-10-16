@@ -1,6 +1,6 @@
 import discord
 from base_client import BaseClient
-from config import WAITING_ROOM_NAME, VERIFIED_ROLE_NAME
+from constants import WAITING_ROOM_NAME, VERIFIED_ROLE_NAME
 
 class TestHelperClient(BaseClient):
   
@@ -34,10 +34,12 @@ class TestHelperClient(BaseClient):
       if msg.content.upper() == "TERMINATE":
         await self.close()
       elif msg.content.upper() == "VERIFY":
+        print("Verifying everybody...")
         verified_role = discord.utils.get(self.guild.roles, name=VERIFIED_ROLE_NAME)
         async for member in self.guild.fetch_members(limit=50000):
           await self.give_role(member, verified_role)
       elif msg.content.upper() == "UNVERIFY":
+        print("Unverifying everybody...")
         verified_role = discord.utils.get(self.guild.roles, name=VERIFIED_ROLE_NAME)
         async for member in self.guild.fetch_members(limit=50000):
           await self.revoke_role(member, verified_role)

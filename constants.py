@@ -1,7 +1,9 @@
 GUILD_NAME = "markred's server"
-CHILL_ROOM_NAME = "General"
+#GUILD_NAME = "Phoenix"
 
-LOBBY_CAPACITY = 1
+PREPARE_ON_READY = True
+TESTING = True
+LOBBY_CAPACITY = 10
 
 CHAT_COOLDOWN_SECONDS = 30
 
@@ -18,6 +20,7 @@ OK_REACTION = "👌"
 KO_REACTION = "🖕"
 
 VERIFIED_ROLE_NAME = "🔥｜Utente"
+CHILL_ROOM_NAME = "☕｜Chill 1"
 MOVE_PROTECTED_CATEGORIES = set([
   "🧷｜Code Names",
   "🚀｜Among Us",

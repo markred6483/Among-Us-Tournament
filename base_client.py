@@ -1,21 +1,13 @@
 import re
 import discord
-
+import sys
 
 class BaseClient(discord.Client):
   
-  def __init__(self, guild_name, intents=None):
+  def __init__(self, guild_name, intents=discord.Intents.default()):
     super().__init__(intents=intents)
     self.guild_name = guild_name
     self.guild = None
-  
-  def reset(self):
-    self.category_channel = None
-    self.waiting_chat = None
-    self.waiting_room = None
-    self.lobbies = None
-    self.manager_role = None
-    self.participant_role = None
   
   async def on_ready(self):
       self.guild = discord.utils.get(self.guilds, name=self.guild_name)
@@ -116,8 +108,12 @@ class BaseClient(discord.Client):
       raise ValueError(f"member_user_id_mention should be a User or str")
     member = self.guild.get_member(member_user_id_mention)
     if not member: # member not cached
-      member = await self.guild.fetch_member(member_user_id_mention)
-      print(f'Fetched member {member}')
+      try:
+        member = await self.guild.fetch_member(member_user_id_mention)
+        print(f'Fetched member {member}')
+      except discord.errors.NotFound as e:
+        print(f'404 Member {member_user_id_mention}', file=sys.stderr)
+        print(e)
     return member
   
   async def refresh_mute(self, member):
@@ -156,7 +152,7 @@ class BaseClient(discord.Client):
     return True
 
   async def give_role(self, member, role):
-    if role not in member.roles:
+    if role is not None and role not in member.roles:
       await member.add_roles(role)
       await self.refresh_mute_role(member, role)
       return True

@@ -13,9 +13,9 @@ Demote [ids/mentions]	Removes from one or more Member the protected commands pri
 Ban [ids/mentions]		Bans one or more Member from the tournament, unsubscribing and preventing them to subscribe again
 Unban [ids/mentions]	Unbans one or more Member to the tournament, letting them subscribe again
 Broadcast {message}		Sends a Direct Message to every Participant
-Summon					Moves Participants all around the guild to the Waiting Room.
+Summon					Moves Participants all around the guild to the Waiting Room, or sends a Direct Message
 Summon +				Like "Summon", but moves Participants even if invisible, on mobile or Busy
-Start					Starts a new Match, creating the Lobbies and moving Participants currently in the Waiting Room to their assigned Lobby
+Start					Starts a new Match, creating the Lobbies and moving Participants currently in the Waiting Room to their assigned Lobby, or sends a Direct Message
 Start +					Like "Start", but moves Participants even if invisible or on mobile
 End						Finishes the ongoing Match, deleting the Lobbies and moving every Player inside them to the Waiting Room
 Mute					Mutes the Channel where the Author is

@@ -12,8 +12,8 @@ class TournamentClient(BaseClient):
   
   def __init__(self, guild_name):
     intents = discord.Intents.default()
-    intents.members = True # to get all the members of the guild at start-up
     intents.presences = True # to know who is on mobile
+    intents.members = True # to access Role.members and VoiceChannel.members
     super().__init__(guild_name=guild_name, intents=intents)
     self.env_lock = RWLock()
     self.reset()
@@ -24,6 +24,7 @@ class TournamentClient(BaseClient):
       QuitCmdRule(self),
       ListCmdRule(self),
       StartCmdRule(self),
+      AssignCmdRule(self),
       EndCmdRule(self),
       SummonCmdRule(self),
       BroadcastCmdRule(self),
@@ -57,9 +58,14 @@ class TournamentClient(BaseClient):
     t0 = time.time()
     #members = await self.guild.fetch_members(limit=50000).flatten()
     members = [await self.get_member(id)
-        for id in await database.get_participants_ids()]
+        for id in await database.get_participants_ids(self.guild.name)]
     print(f'{len(members)} members fetched in {(time.time()-t0):.2f} seconds')
-    await self.prepare()
+    if PREPARE_ON_READY:
+      await self.prepare()
+    else:
+      permissions.get_category_overwrites(self)
+      permissions.get_chat_overwrites(self)
+      permissions.get_room_overwrites(self)
     await self.execute_old_commands()
   
   async def connect_to_waiting_room(self):
@@ -83,15 +89,16 @@ class TournamentClient(BaseClient):
     #print(f'\non_voice_state_update:\n{member}\n{voice_state1}\n{voice_state2}\n')
 
   async def execute_old_commands(self):
-    already_done = set()
-    async for msg in self.get_waiting_chat().history(limit=10000):
-      if msg.author.id == self.user.id:
-        break
-      if discord.utils.get(msg.reactions, me=True):
-        break
-      if not msg.author in already_done:
-        if await RuleProcessor(JoinCmdRule(self), QuitCmdRule(self)).run(msg):
-          already_done.add(msg.author)
+    if self.get_waiting_chat():
+      already_done = set()
+      async for msg in self.get_waiting_chat().history(limit=10000):
+        if msg.author.id == self.user.id:
+          break
+        if discord.utils.get(msg.reactions, me=True):
+          break
+        if not msg.author in already_done:
+          if await RuleProcessor(JoinCmdRule(self), QuitCmdRule(self)).run(msg):
+            already_done.add(msg.author)
   
   async def prepare(self):
     if not self.get_manager_role():
@@ -105,7 +112,8 @@ class TournamentClient(BaseClient):
         BANNED_ROLE_NAME)
     if not self.get_tournament_category():
       self.category_channel = await self.create_category_channel(
-        CATEGORY_CHANNEL_NAME)
+        name=CATEGORY_CHANNEL_NAME,
+        overwrites=permissions.get_category_overwrites(self))
     if not self.get_waiting_chat():
       self.waiting_chat = await self.create_text_channel(
         name=WAITING_CHAT_NAME,
@@ -123,12 +131,31 @@ class TournamentClient(BaseClient):
     index = str(index)
     lobby_role = await self.create_role(LOBBY_ROLE_PREFIX + index)
     for member in members:
-      await self.give_role(member, lobby_role)
+      await self.give_lobby_role(member, lobby_role)
     lobby = await self.create_voice_channel(
       name=LOBBY_NAME_PREFIX + index,
       category=self.get_tournament_category(),
       overwrites=permissions.get_lobby_overwrites(self, lobby_role))
     return lobby
+
+  async def give_lobby_role(self, member, index_or_role):
+    if isinstance(index_or_role, int):
+      index_or_role = str(index_or_role)
+    if isinstance(index_or_role, str):
+      role = self.get_role(LOBBY_ROLE_PREFIX + index_or_role)
+    elif isinstance(index_or_role, discord.Role) and \
+         LOBBY_ROLE_PREFIX in index_or_role.name:
+      role = index_or_role
+    if role is None:
+      raise ValueError(f"{index_or_role} is not a lobby index nor a lobby role")
+    elif self.get_participant_role() not in member.roles:
+      raise ValueError(f"{member} is not a participant")
+    return await self.give_role(member, role)
+  
+  async def revoke_lobby_role(self, member):
+    lobby_role = discord.utils.find(
+        lambda r: LOBBY_ROLE_PREFIX in r.name, member.roles)
+    return await self.revoke_role(member, lobby_role)
 
   async def delete_lobbies(self, backup_channel=None):
     if self.get_tournament_category():
@@ -207,24 +234,28 @@ class TournamentClient(BaseClient):
   async def give_participant_role(self, member):
     if self.get_banned_role() in member.roles:
       return False
-    await database.put_participant_id(member.id)
+    await database.put_participant_id(self.guild.name, member.id)
     return await self.give_role(member, self.get_participant_role())
 
   async def give_manager_role(self, member):
     if self.get_banned_role() in member.roles:
       return False
-    await self.give_role(member, self.get_manager_role())
+    return await self.give_role(member, self.get_manager_role())
   
   async def give_banned_role(self, member):
     if await self.give_role(member, self.get_banned_role()):
       await self.revoke_manager_role(member, move_to_waiting=False)
-      await self.revoke_participant_role(member)
+      await self.revoke_participant_role(member, move_to_waiting=False)
+      await self.move_member(member,
+          at=self.get_tournament_category(),
+          to=self.get_chill_room(),
+          force_mobile=True)
       return True
     return False
 
   async def revoke_participant_role(self, member, move_to_waiting=True):
     if await self.revoke_role(member, self.get_participant_role()):
-      await database.del_participant_id(member.id)
+      await database.del_participant_id(self.guild.name, member.id)
       for role in member.roles:
         if LOBBY_ROLE_PREFIX in role.name:
           await self.revoke_role(member, role)

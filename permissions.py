@@ -1,4 +1,5 @@
 import discord
+import sys
 
 def banned(tournament):
   return tournament.get_banned_role()
@@ -19,9 +20,18 @@ def diff(role, overwrite):
   if role is None:
     return overwrite
   allow, deny = overwrite.pair()
-  assert role.permissions.value & allow.value == allow.value, \
-      '"Verified-User Role permissions are too restricted"'
+  delta = ~role.permissions.value & allow.value
+  if delta != 0:
+    delta = discord.Permissions(delta)
+    buffer = []
+    for perm, val in delta:
+      if val: buffer.append(perm)
+    print(f"{role} should permit {', '.join(buffer)}", file=sys.stderr)
+    # raise RuntimeError(f"{role} should permit {', '.join(buffer)}")
   return discord.PermissionOverwrite.from_pair(discord.Permissions(0), deny)
+
+def get_category_overwrites(tournament):
+  return None
 
 def get_chat_overwrites(tournament):
   base_overwrite = discord.PermissionOverwrite(
@@ -53,7 +63,7 @@ def get_lobby_overwrites(tournament, lobby_role):
   return {
     default(tournament): diff(verified(tournament), base_overwrite),
     manager(tournament): discord.PermissionOverwrite(
-        view_channel=True ),
+        view_channel=True, speak=True ),
     lobby_role: discord.PermissionOverwrite(
         view_channel=True ),
   }

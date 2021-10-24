@@ -5,11 +5,12 @@ import sys
 class BaseClient(discord.Client):
   
   def __init__(self, guild_name, intents=discord.Intents.default()):
-    super().__init__(intents=intents)
+    super().__init__(intents=intents, guild_ready_timeout=10, chunk_guilds_at_startup =False)
     self.guild_name = guild_name
     self.guild = None
   
-  async def on_ready(self):
+  async def on_guild_available(self, guild):
+    if guild.name == self.guild_name:
       self.guild = discord.utils.get(self.guilds, name=self.guild_name)
       print(f'{self.user} linked to {self.guild.name}')
   

@@ -14,7 +14,6 @@ class TestHelperClient(BaseClient):
     self.waiting_room = None
 
   async def on_ready(self):
-    await super().on_ready()
     self.waiting_room = discord.utils.get(self.guild.channels, name=WAITING_ROOM_NAME)
     await self.connect_to_waiting_room()
   
@@ -57,7 +56,6 @@ class TestClient(BaseClient):
     self.waiting_chat = None
 
   async def on_ready(self):
-    await super().on_ready()
     self.waiting_room = discord.utils.get(self.guild.channels, name=WAITING_ROOM_NAME)
     self.waiting_chat = discord.utils.get(self.guild.channels, name=WAITING_CHAT_NAME)
     await self.connect_to_waiting_room()

@@ -1,7 +1,7 @@
 import time
 import discord
 #import nacl
-from rwlock import RWLock
+from asyncioext import RWLock
 from base_client import BaseClient
 from constants import *
 from rules import *
@@ -52,11 +52,10 @@ class TournamentClient(BaseClient):
     self.verified_role = None
   
   async def on_ready(self):
-    await super().on_ready()
     # Cache members for later use
     print('Fetching guild members...')
     t0 = time.time()
-    #members = await self.guild.fetch_members(limit=50000).flatten()
+    #members = await self.guild.fetch_members(limit=50000).flatten() # too expensive
     members = [await self.get_member(id)
         for id in await database.get_participants_ids(self.guild.name)]
     print(f'{len(members)} members fetched in {(time.time()-t0):.2f} seconds')
@@ -76,9 +75,6 @@ class TournamentClient(BaseClient):
     await self.processor.run(msg)
   
   async def on_voice_state_update(self, member, voice_state1, voice_state2):
-    # it can happen on_voice_state_update fires before on_ready
-    # in this case self.guild is None and an exception would occur soon
-    if self.guild is None: return 
     if voice_state1.channel != voice_state2.channel:
       waiting_room = self.get_waiting_room()
       if waiting_room:

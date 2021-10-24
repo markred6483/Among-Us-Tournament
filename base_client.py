@@ -9,7 +9,8 @@ class BaseClient(discord.Client):
     self.guild_name = guild_name
     self.guild = None
   
-  async def on_ready(self):
+  async def on_guild_available(self, guild):
+    if guild.name == self.guild_name:
       self.guild = discord.utils.get(self.guilds, name=self.guild_name)
       print(f'{self.user} linked to {self.guild.name}')
   

@@ -5,7 +5,7 @@ import sys
 class BaseClient(discord.Client):
   
   def __init__(self, guild_name, intents=discord.Intents.default()):
-    super().__init__(intents=intents, guild_ready_timeout=10, chunk_guilds_at_startup =False)
+    super().__init__(intents=intents)
     self.guild_name = guild_name
     self.guild = None
   
